@@ -1,0 +1,55 @@
+# Shared deploy workflow: static site folder -> Cloudflare (Workers static assets).
+# Called from every project with:  uses: <owner>/ci-shared/.github/workflows/deploy.yml@main
+name: Deploy site
+
+on:
+  workflow_call:
+    inputs:
+      directory:
+        description: Folder that gets published
+        type: string
+        default: web
+      build_command:
+        description: Optional build step that runs before the deploy
+        type: string
+        default: ""
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: deploy-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Optional build step
+        if: ${{ inputs.build_command != '' }}
+        env:
+          BUILD: ${{ inputs.build_command }}
+        run: bash -c "$BUILD"
+
+      - name: Check site folder
+        env:
+          DIR: ${{ inputs.directory }}
+        run: |
+          test -f "$DIR/index.html" || { echo "::error::$DIR/index.html is missing"; exit 1; }
+          big=$(find "$DIR" -type f -size +25M | head -5)
+          if [ -n "$big" ]; then echo "::error::Files over 25 MiB (Cloudflare limit):"; echo "$big"; exit 1; fi
+          echo "Files: $(find "$DIR" -type f | wc -l)"
+
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
