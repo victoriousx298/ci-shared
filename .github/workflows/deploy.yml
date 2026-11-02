@@ -48,6 +48,22 @@ jobs:
           echo "Files: $(find "$DIR" -type f | wc -l)"
 
       - name: Deploy to Cloudflare
+        id: deploy
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4"
+          command: deploy
+
+      # Cloudflare's API fails now and then with a temporary error (for example 10013 on the asset upload). One retry.
+      - name: Wait before retry
+        if: ${{ steps.deploy.outcome == 'failure' }}
+        run: sleep 45
+
+      - name: Deploy to Cloudflare (retry)
+        if: ${{ steps.deploy.outcome == 'failure' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
