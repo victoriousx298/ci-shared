@@ -13,6 +13,14 @@ on:
         description: Optional build step that runs before the deploy
         type: string
         default: ""
+      node_version:
+        description: Optional Node version for the build step (empty = whatever the runner ships)
+        type: string
+        default: ""
+      require_index:
+        description: Fail if the folder has no index.html. Switch off for server-rendered apps, where the Worker answers /
+        type: boolean
+        default: true
     secrets:
       CLOUDFLARE_API_TOKEN:
         required: true
@@ -32,6 +40,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Node
+        if: ${{ inputs.node_version != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
       - name: Optional build step
         if: ${{ inputs.build_command != '' }}
         env:
@@ -41,8 +55,11 @@ jobs:
       - name: Check site folder
         env:
           DIR: ${{ inputs.directory }}
+          REQUIRE_INDEX: ${{ inputs.require_index }}
         run: |
-          test -f "$DIR/index.html" || { echo "::error::$DIR/index.html is missing"; exit 1; }
+          if [ "$REQUIRE_INDEX" = "true" ]; then
+            test -f "$DIR/index.html" || { echo "::error::$DIR/index.html is missing"; exit 1; }
+          fi
           big=$(find "$DIR" -type f -size +25M | head -5)
           if [ -n "$big" ]; then echo "::error::Files over 25 MiB (Cloudflare limit):"; echo "$big"; exit 1; fi
           echo "Files: $(find "$DIR" -type f | wc -l)"
